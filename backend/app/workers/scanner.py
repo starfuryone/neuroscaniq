@@ -21,12 +21,14 @@ import httpx
 import structlog
 from sqlalchemy import select
 
+from app.config import settings
 from app.core.scan_guard import assert_scan_allowed
 from app.db.session import session_scope
 from app.models.host import Host, HostObservation
 from app.models.port import Port
 from app.models.service import Service
 from app.services.ai_analyzer import ai_analyzer
+from app.services.nmap_scanner import enrich_services, is_nmap_available, run_nmap_scan
 from app.services.opensearch import get_opensearch
 from app.services.redis import get_redis
 from app.services.risk_scorer import risk_scorer
@@ -211,6 +213,19 @@ async def handle_scan(payload: dict) -> dict[str, Any]:
                 r["title"] = http.get("title")
                 r["server"] = http.get("server")
         services.append(r)
+
+    # Nmap enrichment pass (only for authorized assets with feature enabled).
+    if asset_authorized and settings.nmap_enabled and is_nmap_available() and services:
+        try:
+            open_ports = [s["port"] for s in services]
+            nmap_result = await run_nmap_scan(
+                ip, open_ports, asset_authorized=True
+            )
+            if nmap_result.services and not nmap_result.error:
+                services = enrich_services(services, nmap_result.services)
+                log.info("scan.nmap_enriched", target=ip, enriched_count=len(nmap_result.services))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("scan.nmap_failed", target=ip, error=str(exc))
 
     # Risk score from deterministic factors.
     risk = risk_scorer.score(

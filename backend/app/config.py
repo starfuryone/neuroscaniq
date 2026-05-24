@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     ai_model_classifier: str = "claude-sonnet-4-6"
     ai_enabled: bool = True
 
+    # Nmap enrichment
+    nmap_enabled: bool = False
+
     # Scanner safety
     allowed_scan_cidrs: str = ""
     blocked_scan_cidrs: str = (
