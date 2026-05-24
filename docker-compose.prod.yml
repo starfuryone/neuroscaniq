@@ -1,0 +1,108 @@
+# Production overlay. Use with the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from dev:
+#   - No source-code bind mounts (immutable images)
+#   - Optional certbot sidecar for Let's Encrypt
+#   - Workers run with replicas: 2
+#   - Healthchecks on every service
+
+version: "3.9"
+
+services:
+  postgres:
+    restart: always
+    environment:
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "neuroscaniq"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  redis:
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  opensearch:
+    restart: always
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  minio:
+    restart: always
+
+  api:
+    restart: always
+    # No volumes; image is the source of truth.
+    volumes: []
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  worker_scan:
+    restart: always
+    deploy:
+      replicas: 2
+
+  worker_screenshot:
+    restart: always
+
+  worker_monitor:
+    restart: always
+
+  worker_alert:
+    restart: always
+
+  frontend:
+    restart: always
+    environment:
+      NODE_ENV: production
+
+  nginx:
+    restart: always
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # ----- Let's Encrypt sidecar ---------------------------------------------
+  # Run once to issue a cert:
+  #   docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
+  #     -d neuroscaniq.example.com --email admin@example.com --agree-tos --no-eff-email
+  # Then activate the HTTPS server block in nginx/conf.d/default.conf.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  certbot_certs:
+  certbot_www:

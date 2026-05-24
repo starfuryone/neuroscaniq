@@ -1,0 +1,65 @@
+# NeuroScanIQ — Backend dependencies
+# Pin to known-good versions; upgrade deliberately.
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# Database
+sqlalchemy==2.0.34
+asyncpg==0.29.0
+alembic==1.13.2
+greenlet==3.0.3
+
+# Validation
+pydantic==2.9.2
+pydantic-settings==2.5.2
+email-validator==2.2.0
+
+# Security
+argon2-cffi==23.1.0
+pyjwt[crypto]==2.9.0
+itsdangerous==2.2.0
+python-jose[cryptography]==3.3.0
+cryptography==43.0.1
+
+# Caching / queues
+redis==5.0.8
+rq==1.16.2
+hiredis==3.0.0
+
+# Search
+opensearch-py==2.7.1
+
+# Storage
+boto3==1.35.20
+botocore==1.35.20
+
+# HTTP / scanning helpers (defensive only)
+httpx==0.27.2
+dnspython==2.6.1
+python-whois==0.9.4
+geoip2==4.8.0
+
+# Billing
+stripe==10.10.0
+
+# Email
+emails==0.6
+jinja2==3.1.4
+
+# Observability
+structlog==24.4.0
+prometheus-client==0.20.0
+
+# AI clients
+anthropic==0.34.2
+openai==1.51.0
+
+# Dev / test
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2
+ruff==0.6.8
+mypy==1.11.2
