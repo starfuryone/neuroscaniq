@@ -21,25 +21,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Enums --------------------------------------------------------------
-    user_role = postgresql.ENUM("user", "admin", "auditor", name="userrole", create_type=True)
-    org_role = postgresql.ENUM("owner", "admin", "member", "viewer", name="orgrole", create_type=True)
-    asset_kind = postgresql.ENUM("ip", "cidr", "domain", "asn", name="assetkind", create_type=True)
-    asset_status = postgresql.ENUM("pending", "verified", "rejected", "revoked", name="assetstatus", create_type=True)
-    proof_method = postgresql.ENUM("dns_txt", "email", "file_upload", "asn_attestation", name="proofmethod", create_type=True)
-    proof_status = postgresql.ENUM("pending", "verified", "rejected", "expired", name="proofstatus", create_type=True)
-    monitor_cadence = postgresql.ENUM("hourly", "daily", "weekly", name="monitorcadence", create_type=True)
-    alert_severity = postgresql.ENUM("info", "low", "medium", "high", "critical", name="alertseverity", create_type=True)
+    user_role = postgresql.ENUM("user", "admin", "auditor", name="userrole", create_type=False)
+    org_role = postgresql.ENUM("owner", "admin", "member", "viewer", name="orgrole", create_type=False)
+    asset_kind = postgresql.ENUM("ip", "cidr", "domain", "asn", name="assetkind", create_type=False)
+    asset_status = postgresql.ENUM("pending", "verified", "rejected", "revoked", name="assetstatus", create_type=False)
+    proof_method = postgresql.ENUM("dns_txt", "email", "file_upload", "asn_attestation", name="proofmethod", create_type=False)
+    proof_status = postgresql.ENUM("pending", "verified", "rejected", "expired", name="proofstatus", create_type=False)
+    monitor_cadence = postgresql.ENUM("hourly", "daily", "weekly", name="monitorcadence", create_type=False)
+    alert_severity = postgresql.ENUM("info", "low", "medium", "high", "critical", name="alertseverity", create_type=False)
     alert_kind = postgresql.ENUM(
         "new_port", "service_change", "tls_change", "exposure_drift",
         "vulnerability_match", "risk_score_jump", "monitor_failure",
-        name="alertkind", create_type=True,
+        name="alertkind", create_type=False,
     )
-    job_status = postgresql.ENUM("queued", "running", "completed", "failed", "cancelled", "rejected", name="jobstatus", create_type=True)
-    job_kind = postgresql.ENUM("banner", "tls", "http", "screenshot", "monitor_diff", name="jobkind", create_type=True)
-    plan_tier = postgresql.ENUM("free", "pro", "enterprise", name="plantier", create_type=True)
+    job_status = postgresql.ENUM("queued", "running", "completed", "failed", "cancelled", "rejected", name="jobstatus", create_type=False)
+    job_kind = postgresql.ENUM("banner", "tls", "http", "screenshot", "monitor_diff", name="jobkind", create_type=False)
+    plan_tier = postgresql.ENUM("free", "pro", "enterprise", name="plantier", create_type=False)
     subscription_status = postgresql.ENUM(
         "active", "trialing", "past_due", "canceled", "incomplete", "incomplete_expired", "unpaid", "paused",
-        name="subscriptionstatus", create_type=True,
+        name="subscriptionstatus", create_type=False,
     )
 
     bind = op.get_bind()
