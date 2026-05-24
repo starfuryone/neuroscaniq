@@ -38,6 +38,7 @@ BLOCKED_FLAGS: frozenset[str] = frozenset({
     "-iL",
     "-D",
     "-S",
+    "-sS",
     "--spoof-mac",
     "-sU",
     "--script-args",
@@ -56,7 +57,7 @@ BLOCKED_FLAGS: frozenset[str] = frozenset({
 })
 
 SAFE_DEFAULTS: list[str] = [
-    "-sS",
+    "-sT",
     "-sV",
     "-T3",
     "--max-rate", "100",

@@ -166,7 +166,7 @@ class TestBuildCommand:
     def test_default_command(self) -> None:
         cmd = _build_command("203.0.113.10", [80, 443])
         assert cmd[0] == "nmap"
-        assert "-sS" in cmd
+        assert "-sT" in cmd
         assert "-sV" in cmd
         assert "-T3" in cmd
         assert "--max-rate" in cmd
