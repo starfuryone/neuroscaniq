@@ -28,6 +28,13 @@ from app.models.host import Host, HostObservation
 from app.models.port import Port
 from app.models.service import Service
 from app.services.ai_analyzer import ai_analyzer
+from app.services.metrics import (
+    PORTS_DISCOVERED,
+    SCAN_COMPLETED,
+    SCAN_DURATION,
+    SCAN_FAILED,
+    SCAN_STARTED,
+)
 from app.services.nmap_scanner import enrich_services, is_nmap_available, run_nmap_scan
 from app.services.opensearch import get_opensearch
 from app.services.redis import get_redis
@@ -177,6 +184,10 @@ async def handle_scan(payload: dict) -> dict[str, Any]:
     """
     target = payload.get("target", "")
     asset_authorized = bool(payload.get("asset_authorized", False))
+    is_monitor = payload.get("kind") == "monitor_diff"
+
+    SCAN_STARTED.labels(scan_type="banner").inc()
+    scan_start = __import__("time").monotonic()
 
     # Single, central authorization point.
     resolved = assert_scan_allowed(target, asset_authorized=asset_authorized)
@@ -219,7 +230,9 @@ async def handle_scan(payload: dict) -> dict[str, Any]:
         try:
             open_ports = [s["port"] for s in services]
             nmap_result = await run_nmap_scan(
-                ip, open_ports, asset_authorized=True
+                ip, open_ports,
+                asset_authorized=True,
+                bypass_cooldown=is_monitor,
             )
             if nmap_result.services and not nmap_result.error:
                 services = enrich_services(services, nmap_result.services)
@@ -356,6 +369,12 @@ async def handle_scan(payload: dict) -> dict[str, Any]:
                 "host_id": host_id,
             },
         )
+
+    # Record metrics
+    scan_elapsed = __import__("time").monotonic() - scan_start
+    SCAN_COMPLETED.labels(scan_type="banner").inc()
+    SCAN_DURATION.labels(scan_type="banner").observe(scan_elapsed)
+    PORTS_DISCOVERED.labels(scan_type="banner").observe(len(services))
 
     return {
         "ip": ip,

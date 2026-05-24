@@ -82,6 +82,10 @@ class Settings(BaseSettings):
 
     # Nmap enrichment
     nmap_enabled: bool = False
+    nmap_max_concurrent: int = 4
+    nmap_max_rate_pps: int = 100
+    nmap_cache_ttl_seconds: int = 900
+    nmap_cooldown_seconds: int = 3600
 
     # Scanner safety
     allowed_scan_cidrs: str = ""

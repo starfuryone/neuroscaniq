@@ -1,13 +1,16 @@
-"""Liveness and readiness probes.
+"""Liveness, readiness probes, and metrics endpoint.
 
 `/health` is unauthenticated and intentionally lightweight; `/health/ready`
 performs deeper checks against Postgres, Redis, and OpenSearch.
+`/metrics` exposes Prometheus-format metrics for scraping.
 """
 
 from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends
+from fastapi.responses import PlainTextResponse
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,3 +59,13 @@ async def ready(session: AsyncSession = Depends(get_db)) -> dict[str, object]:
 
     overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
     return {"status": overall, "checks": checks, "version": __version__}
+
+
+@router.get("/metrics", response_class=PlainTextResponse, include_in_schema=False)
+async def metrics() -> PlainTextResponse:
+    """Prometheus metrics scrape endpoint."""
+    import app.services.metrics  # noqa: F401 — ensure registry is populated
+    return PlainTextResponse(
+        content=generate_latest().decode("utf-8"),
+        media_type=CONTENT_TYPE_LATEST,
+    )

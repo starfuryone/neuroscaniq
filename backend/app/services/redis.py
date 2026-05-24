@@ -44,3 +44,8 @@ class RedisClient:
 
 
 redis_client = RedisClient(settings.redis_url)
+
+
+async def get_redis() -> aioredis.Redis:
+    """Return the raw async Redis connection for direct operations."""
+    return redis_client.client

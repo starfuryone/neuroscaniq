@@ -21,6 +21,11 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
+# Future: To enable SYN scanning (not recommended — increases attack surface):
+# RUN setcap cap_net_raw,cap_net_admin+eip /usr/bin/nmap
+# Then change SAFE_DEFAULTS in app/services/nmap_scanner.py from -sT to -sS.
+# Currently disabled: workers run unprivileged with TCP connect scan only.
+
 # Drop privileges
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
 USER app
