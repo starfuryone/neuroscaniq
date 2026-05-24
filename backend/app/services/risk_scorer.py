@@ -29,7 +29,7 @@ SENSITIVE_PORTS: list[tuple[int, str, int]] = [
     (6379, "redis_exposed", 30),
     (9200, "elasticsearch_exposed", 30),
     (11211, "memcached_exposed", 20),
-    (27017, "mongodb_exposed", 30),
+    (27017, "mongodb_exposed", 50),
 ]
 
 ADMIN_KEYWORDS = ("admin", "phpmyadmin", "cpanel", "router login", "webmin", "management")
@@ -134,3 +134,26 @@ def _level_for(score: float) -> str:
     if score >= 25:
         return "medium"
     return "low"
+
+
+class RiskScorer:
+    def score(
+        self,
+        *,
+        ports: list[int],
+        services: list[dict[str, Any]],
+        tls: dict[str, Any] | None,
+        http: dict[str, Any] | None,
+        tags: list[str],
+    ) -> RiskResult:
+        snapshot: dict[str, Any] = {
+            "ports": ports,
+            "services": services,
+            "tls": tls,
+            "http": http,
+            "tags": tags,
+        }
+        return score_host(snapshot)
+
+
+risk_scorer = RiskScorer()

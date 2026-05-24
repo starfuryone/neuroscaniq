@@ -24,7 +24,8 @@ def _walk(node, path: list[str]) -> bool:
 class TestQueryParser:
     def test_empty_returns_match_all(self) -> None:
         dsl = parse_query("")
-        assert dsl == {"match_all": {}} or "match_all" in dsl
+        query = dsl.get("query", dsl)
+        assert query == {"match_all": {}} or "match_all" in query
 
     def test_port_filter(self) -> None:
         dsl = parse_query("port:443")

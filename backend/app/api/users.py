@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.schemas import PasswordChangeRequest, UserOut, UserUpdate
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter()
 
 
 @router.get("/me", response_model=UserOut)
@@ -38,7 +38,7 @@ async def change_password(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    if not verify_password(user.password_hash, payload.current_password):
+    if not verify_password(payload.current_password, user.password_hash):
         raise Unauthorized("Current password is incorrect.")
     user.password_hash = hash_password(payload.new_password)
     await session.commit()

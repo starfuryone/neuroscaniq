@@ -14,7 +14,7 @@ from app.models.asset import Asset
 from app.models.user import User
 from app.schemas.schemas import AlertOut
 
-router = APIRouter(prefix="/alerts", tags=["alerts"])
+router = APIRouter()
 
 
 @router.get("", response_model=list[AlertOut])

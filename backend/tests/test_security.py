@@ -29,11 +29,11 @@ class TestPasswordHashing:
 
     def test_round_trip(self) -> None:
         h = hash_password("CorrectHorseBattery5!")
-        assert verify_password(h, "CorrectHorseBattery5!")
+        assert verify_password("CorrectHorseBattery5!", h)
 
     def test_wrong_password_rejected(self) -> None:
         h = hash_password("CorrectHorseBattery5!")
-        assert not verify_password(h, "wrong")
+        assert not verify_password("wrong", h)
 
     def test_distinct_salts(self) -> None:
         a = hash_password("CorrectHorseBattery5!")
@@ -43,27 +43,27 @@ class TestPasswordHashing:
 
 class TestJWT:
     def test_access_token_round_trip(self) -> None:
-        token, jti = create_access_token("user-123", role="user")
-        claims = decode_token(token, audience=ACCESS_AUDIENCE)
+        token, jti = create_access_token(user_id="user-123", role="user")
+        claims = decode_token(token, aud=ACCESS_AUDIENCE)
         assert claims["sub"] == "user-123"
         assert claims["role"] == "user"
         assert claims["jti"] == jti
 
     def test_refresh_token_round_trip(self) -> None:
-        token, jti = create_refresh_token("user-123")
-        claims = decode_token(token, audience=REFRESH_AUDIENCE)
+        token, jti = create_refresh_token(user_id="user-123")
+        claims = decode_token(token, aud=REFRESH_AUDIENCE)
         assert claims["sub"] == "user-123"
         assert claims["jti"] == jti
 
     def test_access_token_rejects_refresh_audience(self) -> None:
         # Cross-audience attack -- a refresh token must not work as an access token.
-        refresh, _ = create_refresh_token("user-123")
+        refresh, _ = create_refresh_token(user_id="user-123")
         with pytest.raises(Exception):  # noqa: PT011
-            decode_token(refresh, audience=ACCESS_AUDIENCE)
+            decode_token(refresh, aud=ACCESS_AUDIENCE)
 
     def test_email_token_with_purpose(self) -> None:
-        token = create_email_token("user-123", purpose="verify")
-        claims = decode_token(token, audience="neuroscaniq:email")
+        token = create_email_token(user_id="user-123", purpose="verify")
+        claims = decode_token(token, aud="neuroscaniq:email")
         assert claims["sub"] == "user-123"
         assert claims["purpose"] == "verify"
 

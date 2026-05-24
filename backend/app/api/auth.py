@@ -50,7 +50,7 @@ from app.services.email import email_service
 from app.services.redis import get_redis
 
 log = structlog.get_logger(__name__)
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter()
 
 
 REFRESH_JTI_PREFIX = "refresh:jti:"
@@ -104,8 +104,8 @@ async def register(
     await session.flush()
     await session.commit()
 
-    verify_token = create_email_token(str(user.id), purpose="verify")
-    verify_url = f"{settings.PUBLIC_APP_URL}/auth/verify-email?token={verify_token}"
+    verify_token = create_email_token(user_id=str(user.id), purpose="verify")
+    verify_url = f"{settings.app_url}/auth/verify-email?token={verify_token}"
     await email_service.send(
         to=user.email,
         template="verify_email",
@@ -134,11 +134,11 @@ async def login(
     user = await session.scalar(select(User).where(User.email == email_norm))
     # Always run the hasher even on miss to avoid timing oracle.
     if user is None:
-        verify_password("$argon2id$v=19$m=65536,t=3,p=2$abcdefgh$invalidhash", payload.password)
+        verify_password(payload.password, "$argon2id$v=19$m=65536,t=3,p=2$abcdefgh$invalidhash")
         log.info("auth.login_failed", email=email_norm, ip=_client_ip(request), reason="no_user")
         raise Unauthorized("Invalid email or password.")
 
-    if not verify_password(user.password_hash, payload.password):
+    if not verify_password(payload.password, user.password_hash):
         log.info("auth.login_failed", user_id=str(user.id), ip=_client_ip(request), reason="bad_password")
         raise Unauthorized("Invalid email or password.")
 
@@ -148,9 +148,9 @@ async def login(
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(payload.password)
 
-    access, _ = create_access_token(str(user.id), role=user.role.value)
-    refresh, jti = create_refresh_token(str(user.id))
-    await _store_refresh_jti(jti, str(user.id), settings.JWT_REFRESH_TTL_SECONDS)
+    access, _ = create_access_token(user_id=str(user.id), role=user.role.value)
+    refresh, jti = create_refresh_token(user_id=str(user.id))
+    await _store_refresh_jti(jti, str(user.id), settings.jwt_refresh_ttl_days * 86400)
 
     user.last_login_at = datetime.now(timezone.utc)
     await session.commit()
@@ -160,7 +160,7 @@ async def login(
         access_token=access,
         refresh_token=refresh,
         token_type="bearer",
-        expires_in=settings.JWT_ACCESS_TTL_SECONDS,
+        expires_in=settings.jwt_access_ttl_minutes * 60,
     )
 
 
@@ -172,7 +172,7 @@ async def refresh(
     """Rotate a refresh token. The prior JTI is invalidated."""
     settings = get_settings()
     try:
-        claims = decode_token(payload.refresh_token, audience=REFRESH_AUDIENCE)
+        claims = decode_token(payload.refresh_token, aud=REFRESH_AUDIENCE)
     except Exception:  # noqa: BLE001
         raise Unauthorized("Invalid or expired refresh token.") from None
 
@@ -189,15 +189,15 @@ async def refresh(
     if user is None or not user.is_active:
         raise Unauthorized("Account not available.")
 
-    access, _ = create_access_token(str(user.id), role=user.role.value)
-    new_refresh, new_jti = create_refresh_token(str(user.id))
-    await _store_refresh_jti(new_jti, str(user.id), settings.JWT_REFRESH_TTL_SECONDS)
+    access, _ = create_access_token(user_id=str(user.id), role=user.role.value)
+    new_refresh, new_jti = create_refresh_token(user_id=str(user.id))
+    await _store_refresh_jti(new_jti, str(user.id), settings.jwt_refresh_ttl_days * 86400)
 
     return TokenResponse(
         access_token=access,
         refresh_token=new_refresh,
         token_type="bearer",
-        expires_in=settings.JWT_ACCESS_TTL_SECONDS,
+        expires_in=settings.jwt_access_ttl_minutes * 60,
     )
 
 
@@ -208,7 +208,7 @@ async def verify_email(
 ) -> UserOut:
     """Mark a user's email as verified after validating the signed token."""
     try:
-        claims = decode_token(payload.token, audience="neuroscaniq:email")
+        claims = decode_token(payload.token, aud="neuroscaniq:email")
     except Exception:  # noqa: BLE001
         raise Unauthorized("Verification link is invalid or has expired.") from None
 
@@ -234,8 +234,8 @@ async def password_reset_request(
     settings = get_settings()
     user = await session.scalar(select(User).where(User.email == payload.email.lower().strip()))
     if user is not None and user.is_active:
-        token = create_email_token(str(user.id), purpose="reset")
-        reset_url = f"{settings.PUBLIC_APP_URL}/auth/reset?token={token}"
+        token = create_email_token(user_id=str(user.id), purpose="reset")
+        reset_url = f"{settings.app_url}/auth/reset?token={token}"
         await email_service.send(
             to=user.email,
             template="password_reset",
@@ -251,7 +251,7 @@ async def password_reset_confirm(
 ) -> UserOut:
     """Set a new password from a valid reset token."""
     try:
-        claims = decode_token(payload.token, audience="neuroscaniq:email")
+        claims = decode_token(payload.token, aud="neuroscaniq:email")
     except Exception:  # noqa: BLE001
         raise Unauthorized("Reset link is invalid or has expired.") from None
 

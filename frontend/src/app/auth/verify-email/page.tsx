@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api, APIError } from '@/lib/api';
-import { AuthShell } from '@/app/login/page';
+import { AuthShell } from '@/components/auth-shell';
 
 function VerifyInner() {
   const params = useSearchParams();

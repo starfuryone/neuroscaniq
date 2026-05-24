@@ -26,7 +26,7 @@ from app.schemas.schemas import CheckoutRequest, CheckoutResponse, SubscriptionO
 from app.services.stripe_service import stripe_service
 
 log = structlog.get_logger(__name__)
-router = APIRouter(prefix="/billing", tags=["billing"])
+router = APIRouter()
 
 
 @router.get("/subscription", response_model=SubscriptionOut)

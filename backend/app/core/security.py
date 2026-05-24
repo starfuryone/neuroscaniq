@@ -68,25 +68,29 @@ def _encode(
     return jwt.encode(body, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(*, user_id: str, role: str) -> str:
-    return _encode(
-        {"sub": user_id, "role": role, "typ": "access"},
+def create_access_token(*, user_id: str, role: str) -> tuple[str, str]:
+    jti = secrets.token_urlsafe(16)
+    token = _encode(
+        {"sub": user_id, "role": role, "typ": "access", "jti": jti},
         aud=ACCESS_AUDIENCE,
         ttl_seconds=settings.jwt_access_ttl_minutes * 60,
     )
+    return token, jti
 
 
-def create_refresh_token(*, user_id: str, jti: str | None = None) -> str:
-    return _encode(
-        {"sub": user_id, "typ": "refresh", "jti": jti or secrets.token_urlsafe(16)},
+def create_refresh_token(*, user_id: str, jti: str | None = None) -> tuple[str, str]:
+    jti = jti or secrets.token_urlsafe(16)
+    token = _encode(
+        {"sub": user_id, "typ": "refresh", "jti": jti},
         aud=REFRESH_AUDIENCE,
         ttl_seconds=settings.jwt_refresh_ttl_days * 86400,
     )
+    return token, jti
 
 
 def create_email_token(*, user_id: str, purpose: Literal["verify", "reset"]) -> str:
     return _encode(
-        {"sub": user_id, "typ": purpose},
+        {"sub": user_id, "typ": purpose, "purpose": purpose},
         aud=EMAIL_AUDIENCE,
         ttl_seconds=60 * 60 * 24,  # 24h
     )

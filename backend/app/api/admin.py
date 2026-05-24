@@ -21,7 +21,7 @@ from app.models.user import User, UserRole
 from app.schemas.schemas import AdminStats, AuditLogOut, UserOut
 from app.services.redis import get_redis
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter()
 
 
 @router.get("/stats", response_model=AdminStats)

@@ -53,6 +53,30 @@ def _in_any(ip: ipaddress._BaseAddress, nets) -> bool:
     return any(ip in n for n in nets)
 
 
+def _is_non_routable(ip: ipaddress._BaseAddress) -> bool:
+    """Check if an IP is in a non-routable range we always block."""
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast:
+        return True
+    if ip.version == 4:
+        return _in_any(ip, _ALWAYS_BLOCKED_V4)
+    return _in_any(ip, _ALWAYS_BLOCKED_V6)
+
+
+_ALWAYS_BLOCKED_V4 = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+]
+
+_ALWAYS_BLOCKED_V6 = [
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
 def assert_scan_allowed(target: str, *, asset_authorized: bool = False) -> ResolvedTarget:
     """Raise ScanTargetRejected if `target` may not be probed.
 
@@ -64,8 +88,8 @@ def assert_scan_allowed(target: str, *, asset_authorized: bool = False) -> Resol
     resolved = _resolve(target)
     ip = resolved.ip
 
-    # Always-blocked (private, loopback, link-local, etc.)
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+    # Always-blocked: RFC 1918, loopback, link-local, multicast
+    if _is_non_routable(ip):
         raise ScanTargetRejected(f"{target} resolves to a non-public address ({ip})")
 
     if _in_any(ip, settings.blocked_networks):

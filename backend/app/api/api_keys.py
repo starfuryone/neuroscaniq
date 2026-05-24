@@ -21,7 +21,7 @@ from app.models.user import User
 from app.schemas.schemas import APIKeyCreate, APIKeyCreated, APIKeyOut
 
 log = structlog.get_logger(__name__)
-router = APIRouter(prefix="/api-keys", tags=["api-keys"])
+router = APIRouter()
 
 
 @router.get("", response_model=list[APIKeyOut])

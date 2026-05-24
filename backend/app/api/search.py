@@ -26,7 +26,7 @@ from app.services.query_parser import filter_aggs, parse_query
 from app.services.redis import get_redis
 
 log = structlog.get_logger(__name__)
-router = APIRouter(prefix="/search", tags=["search"])
+router = APIRouter()
 
 
 SEARCH_QUOTA_KEY = "quota:search:{user_id}:{period}"
@@ -108,8 +108,8 @@ async def search_hosts(
                 risk_level=src.get("risk_level", "low"),
                 tags=src.get("tags", []),
                 last_seen=src.get("last_seen"),
-                lat=loc.get("lat"),
-                lon=loc.get("lon"),
+                latitude=loc.get("lat"),
+                longitude=loc.get("lon"),
             )
         )
 

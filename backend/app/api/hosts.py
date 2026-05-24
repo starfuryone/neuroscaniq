@@ -31,7 +31,7 @@ from app.services.opensearch import get_opensearch
 from app.services.storage import storage_service
 
 log = structlog.get_logger(__name__)
-router = APIRouter(prefix="/hosts", tags=["hosts"])
+router = APIRouter()
 
 
 def _validate_ip(ip: str) -> str:

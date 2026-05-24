@@ -41,7 +41,7 @@ from app.services.ownership import ownership_service
 from app.services.redis import get_redis
 
 log = structlog.get_logger(__name__)
-router = APIRouter(prefix="/monitor", tags=["monitor"])
+router = APIRouter()
 
 
 # ---------------------------- assets ----------------------------------------

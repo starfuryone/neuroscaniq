@@ -42,6 +42,7 @@ class Host(Base, UUIDMixin, TimestampMixin):
     longitude: Mapped[float | None] = mapped_column(Float)
     asn: Mapped[int | None] = mapped_column(Integer, index=True)
     asn_org: Mapped[str | None] = mapped_column(String(255), index=True)
+    organization: Mapped[str | None] = mapped_column(String(255))
 
     # Denormalized "current state" (kept in sync by scanner workers)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)

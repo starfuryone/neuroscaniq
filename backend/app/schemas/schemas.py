@@ -141,8 +141,8 @@ class SearchHit(BaseModel):
     risk_level: str = "low"
     tags: list[str] = Field(default_factory=list)
     last_seen: str | None = None
-    lat: float | None = None
-    lon: float | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class SearchFacet(BaseModel):

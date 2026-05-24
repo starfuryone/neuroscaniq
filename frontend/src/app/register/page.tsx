@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/primitives';
 import { api, APIError } from '@/lib/api';
-import { AuthShell } from '@/app/login/page';
+import { AuthShell } from '@/components/auth-shell';
 
 export default function RegisterPage() {
   const router = useRouter();

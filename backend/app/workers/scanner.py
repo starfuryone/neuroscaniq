@@ -177,11 +177,11 @@ async def handle_scan(payload: dict) -> dict[str, Any]:
     asset_authorized = bool(payload.get("asset_authorized", False))
 
     # Single, central authorization point.
-    allowed_ips = await assert_scan_allowed(target, asset_authorized=asset_authorized)
-    log.info("scan.authorized", target=target, resolved=allowed_ips)
+    resolved = assert_scan_allowed(target, asset_authorized=asset_authorized)
+    log.info("scan.authorized", target=target, resolved=str(resolved.ip))
 
     ports = tuple(payload.get("ports") or DEFAULT_PORTS)
-    ip = allowed_ips[0]  # All resolved IPs already passed the guard; use primary.
+    ip = str(resolved.ip)
 
     open_results: list[dict[str, Any]] = []
     probes = [_connect_probe(ip, p) for p in ports]

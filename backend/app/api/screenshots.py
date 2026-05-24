@@ -12,7 +12,7 @@ from app.schemas.schemas import ScreenshotOut
 from app.services.opensearch import get_opensearch
 from app.services.storage import storage_service
 
-router = APIRouter(prefix="/screenshots", tags=["screenshots"])
+router = APIRouter()
 
 
 @router.get("", response_model=list[ScreenshotOut])
