@@ -59,5 +59,6 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
     monthly_search_quota: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     monthly_api_quota: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
     monitor_quota: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    monthly_deep_scan_quota: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     user = relationship("User", back_populates="subscription")

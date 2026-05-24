@@ -8,6 +8,7 @@ GET /host/{ip}/screenshots screenshots indexed for this host
 from __future__ import annotations
 
 import ipaddress
+import json
 from datetime import datetime, timezone
 
 import structlog
@@ -175,3 +176,115 @@ async def host_screenshots(
             )
         )
     return out
+
+
+@router.post("/{ip}/deep-scan", status_code=202)
+async def request_deep_scan(
+    ip: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Request Nmap deep-scan enrichment for a verified asset.
+
+    Requires the caller to own a verified Asset covering this IP.
+    Subject to per-user rate limiting and plan-tier quotas.
+    """
+    from ipaddress import ip_address, ip_network
+    from app.config import settings
+    from app.models.asset import Asset, AssetStatus, AssetKind
+    from app.models.billing import Subscription, PlanTier
+    from app.models.scan_job import ScanJob, JobKind, JobStatus
+    from app.services.redis import get_redis
+
+    validated_ip = _validate_ip(ip)
+
+    # Find a verified asset owned by this user that covers the IP
+    assets = (await session.scalars(
+        select(Asset).where(
+            Asset.created_by == user.id,
+            Asset.status == AssetStatus.verified,
+        )
+    )).all()
+
+    authorized_asset = None
+    target_ip = ip_address(validated_ip)
+    for asset in assets:
+        if asset.kind == AssetKind.ip and asset.value == validated_ip:
+            authorized_asset = asset
+            break
+        elif asset.kind == AssetKind.cidr:
+            try:
+                if target_ip in ip_network(asset.value, strict=False):
+                    authorized_asset = asset
+                    break
+            except ValueError:
+                continue
+
+    if authorized_asset is None:
+        from app.core.errors import OwnershipRequired
+        raise OwnershipRequired(
+            "No verified asset covers this IP. Register and verify ownership first."
+        )
+
+    # Check plan-tier quota
+    sub = await session.scalar(
+        select(Subscription).where(Subscription.user_id == user.id)
+    )
+    quota = 0
+    if sub:
+        quota = sub.monthly_deep_scan_quota
+    else:
+        quota = 0  # free tier: no deep scans
+
+    if quota <= 0:
+        from app.core.errors import Forbidden
+        raise Forbidden("Deep scan is not available on your plan. Upgrade to Pro or Enterprise.")
+
+    # Per-user per-IP rate limit via Redis (1 hour cooldown)
+    redis = await get_redis()
+    cooldown_key = f"deep_scan:{user.id}:{validated_ip}"
+    if await redis.exists(cooldown_key):
+        from app.core.errors import RateLimited
+        raise RateLimited("Deep scan for this IP was requested recently. Try again later.")
+    await redis.set(cooldown_key, "1", ex=settings.nmap_cooldown_seconds)
+
+    # Create scan job
+    job = ScanJob(
+        kind=JobKind.deep_scan,
+        status=JobStatus.queued,
+        target=validated_ip,
+        asset_id=str(authorized_asset.id),
+    )
+    session.add(job)
+    await session.flush()
+    job_id = str(job.id)
+    await session.commit()
+
+    # Enqueue to scanner worker
+    await redis.lpush("queue:scan", json.dumps({
+        "id": job_id,
+        "kind": "deep_scan",
+        "target": validated_ip,
+        "asset_id": str(authorized_asset.id),
+        "asset_authorized": True,
+        "use_nmap": True,
+    }))
+
+    # Audit log
+    from app.models.audit_log import AuditLog
+    async with session.begin_nested():
+        audit = AuditLog(
+            actor_user_id=str(user.id),
+            action="deep_scan.requested",
+            resource_type="host",
+            resource_id=validated_ip,
+            metadata_json={
+                "asset_id": str(authorized_asset.id),
+                "job_id": job_id,
+            },
+        )
+        session.add(audit)
+    await session.commit()
+
+    log.info("deep_scan.requested", user_id=str(user.id), ip=validated_ip, job_id=job_id)
+    return {"job_id": job_id, "status": "queued"}

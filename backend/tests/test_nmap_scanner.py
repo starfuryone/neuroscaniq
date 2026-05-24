@@ -345,16 +345,27 @@ class TestCache:
 class TestSemaphore:
     @pytest.mark.asyncio
     async def test_concurrency_bounded(self) -> None:
-        """Verify the semaphore limits concurrent nmap processes."""
-        import app.services.nmap_scanner as mod
-        # Reset semaphore to a known value
-        mod._semaphore = asyncio.Semaphore(2)
+        """Verify the distributed semaphore limits concurrent nmap processes."""
+        from app.services.nmap_scanner import RedisDistributedSemaphore
 
         execution_order: list[str] = []
         max_concurrent = 0
         current_concurrent = 0
 
-        original_exec = asyncio.create_subprocess_exec
+        # Use a real asyncio.Semaphore to simulate Redis-based limiting
+        local_sem = asyncio.Semaphore(2)
+
+        async def mock_acquire(self) -> bool:
+            acquired = local_sem._value > 0
+            if acquired:
+                await local_sem.acquire()
+                self._slot_id = "mock_slot"
+            return acquired
+
+        async def mock_release(self) -> None:
+            if self._slot_id is not None:
+                local_sem.release()
+                self._slot_id = None
 
         async def mock_exec(*args, **kwargs):
             nonlocal current_concurrent, max_concurrent
@@ -378,6 +389,8 @@ class TestSemaphore:
              patch("app.services.nmap_scanner._store_cache", new_callable=AsyncMock), \
              patch("app.services.nmap_scanner._set_cooldown", new_callable=AsyncMock), \
              patch("app.services.nmap_scanner.is_nmap_available", return_value=True), \
+             patch.object(RedisDistributedSemaphore, "acquire", mock_acquire), \
+             patch.object(RedisDistributedSemaphore, "release", mock_release), \
              patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
             mock_settings.nmap_enabled = True
             mock_settings.nmap_max_concurrent = 2
@@ -394,21 +407,29 @@ class TestSemaphore:
             # Semaphore(2) means at most 2 concurrent
             assert max_concurrent <= 2
 
-        # Clean up
-        mod._semaphore = None
-
 
 class TestTimeout:
     @pytest.mark.asyncio
     async def test_handles_timeout(self) -> None:
+        from app.services.nmap_scanner import RedisDistributedSemaphore
+
         async def slow_communicate():
             await asyncio.sleep(10)
             return b"", b""
+
+        async def mock_acquire(self) -> bool:
+            self._slot_id = "mock"
+            return True
+
+        async def mock_release(self) -> None:
+            self._slot_id = None
 
         with patch("app.services.nmap_scanner.settings") as mock_settings, \
              patch("app.services.nmap_scanner._check_cooldown", return_value=False), \
              patch("app.services.nmap_scanner._check_cache", return_value=None), \
              patch("app.services.nmap_scanner.is_nmap_available", return_value=True), \
+             patch.object(RedisDistributedSemaphore, "acquire", mock_acquire), \
+             patch.object(RedisDistributedSemaphore, "release", mock_release), \
              patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_settings.nmap_enabled = True
             mock_settings.nmap_max_concurrent = 4

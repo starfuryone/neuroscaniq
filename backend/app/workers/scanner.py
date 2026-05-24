@@ -196,6 +196,39 @@ async def handle_scan(payload: dict) -> dict[str, Any]:
     ports = tuple(payload.get("ports") or DEFAULT_PORTS)
     ip = str(resolved.ip)
 
+    # Deep scan: skip banner probes, run nmap directly on specified/default ports
+    if payload.get("kind") == "deep_scan" and payload.get("use_nmap"):
+        nmap_ports = list(ports)
+        try:
+            nmap_result = await run_nmap_scan(
+                ip, nmap_ports,
+                asset_authorized=True,
+                bypass_cooldown=True,
+                force_refresh=True,
+            )
+            if nmap_result.error:
+                return {"ip": ip, "error": nmap_result.error}
+            services_data = [
+                {"port": s.port, "protocol": s.protocol, "state": s.state,
+                 "service_name": s.service, "product": s.product,
+                 "version": s.version, "cpe": s.cpe}
+                for s in nmap_result.services
+            ]
+            SCAN_COMPLETED.labels(scan_type="deep_scan").inc()
+            SCAN_DURATION.labels(scan_type="deep_scan").observe(
+                nmap_result.scan_time_ms / 1000
+            )
+            PORTS_DISCOVERED.labels(scan_type="deep_scan").observe(len(nmap_result.services))
+            return {
+                "ip": ip,
+                "scan_type": "deep_scan",
+                "services": services_data,
+                "scan_time_ms": nmap_result.scan_time_ms,
+            }
+        except Exception as exc:
+            SCAN_FAILED.labels(scan_type="deep_scan", reason="error").inc()
+            raise
+
     open_results: list[dict[str, Any]] = []
     probes = [_connect_probe(ip, p) for p in ports]
     for r in await asyncio.gather(*probes, return_exceptions=False):

@@ -204,10 +204,39 @@ services:
       - frontend
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/neuroscaniq.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   redisdata:
   opensearchdata:
   miniodata:
+  prom_data:
+  grafana_data:
 
 networks:
   default:

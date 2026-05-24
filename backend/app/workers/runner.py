@@ -22,6 +22,9 @@ from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
 import structlog
+from prometheus_client import start_http_server
+
+import app.services.metrics  # noqa: F401
 
 from app.core.logging import configure_logging
 from app.db.session import session_scope
@@ -38,6 +41,7 @@ Handler = Callable[[dict], Awaitable[dict | None]]
 
 HANDLERS: dict[str, Handler] = {
     "scan": handle_scan,
+    "scanner": handle_scan,
     "screenshot": handle_screenshot,
     "monitor": handle_monitor,
     "alert": handle_alert,
@@ -151,6 +155,8 @@ def main() -> None:
     configure_logging()
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
+
+    start_http_server(9100)
 
     try:
         asyncio.run(run(args.queue))

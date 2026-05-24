@@ -8,8 +8,8 @@ against verified, authorized assets. It is strictly constrained:
   * Blocks dangerous flags (OS fingerprinting, NSE scripts, spoofing, etc.)
   * Only performs TCP connect + service/version detection with conservative timing.
   * Returns structured, typed results for merging into existing service records.
-  * Bounded concurrency via asyncio.Semaphore (NMAP_MAX_CONCURRENT).
-  * Redis-backed cooldown to prevent abuse of deep scans.
+  * Bounded concurrency via Redis-backed distributed semaphore (NMAP_MAX_CONCURRENT).
+  * Redis-backed cooldown to prevent abuse of deep scans (fail-closed).
   * Redis-backed result cache to avoid redundant scanning.
 
 This is NOT a general-purpose scanner. It enriches already-discovered open
@@ -57,15 +57,61 @@ log = structlog.get_logger(__name__)
 
 NMAP_TIMEOUT_SECONDS = 120
 
-_semaphore: asyncio.Semaphore | None = None
 
+class RedisDistributedSemaphore:
+    """Redis-backed semaphore for cluster-wide concurrency control.
 
-def _get_semaphore() -> asyncio.Semaphore:
-    """Lazy-init semaphore (must be created inside a running event loop)."""
-    global _semaphore
-    if _semaphore is None:
-        _semaphore = asyncio.Semaphore(settings.nmap_max_concurrent)
-    return _semaphore
+    Uses a sorted set with TTL-based slot expiry. Each worker acquires
+    a slot by adding its unique ID; releases by removing it.
+    """
+
+    SEMAPHORE_KEY = "nmap:semaphore:slots"
+
+    def __init__(self, max_concurrent: int, slot_ttl: int = 180):
+        self._max = max_concurrent
+        self._slot_ttl = slot_ttl
+        self._slot_id: str | None = None
+
+    async def acquire(self) -> bool:
+        from app.services.redis import get_redis
+        import uuid, time as _time
+        redis = await get_redis()
+        self._slot_id = f"{uuid.uuid4().hex}:{_time.monotonic_ns()}"
+        now = _time.time()
+
+        # Remove expired slots
+        await redis.zremrangebyscore(self.SEMAPHORE_KEY, "-inf", now - self._slot_ttl)
+
+        # Check current count
+        current = await redis.zcard(self.SEMAPHORE_KEY)
+        if current >= self._max:
+            self._slot_id = None
+            return False
+
+        # Try to add our slot
+        await redis.zadd(self.SEMAPHORE_KEY, {self._slot_id: now})
+
+        # Re-check in case of race (double-check pattern)
+        current = await redis.zcard(self.SEMAPHORE_KEY)
+        if current > self._max:
+            # We lost the race — remove ourselves
+            await redis.zrem(self.SEMAPHORE_KEY, self._slot_id)
+            self._slot_id = None
+            return False
+
+        return True
+
+    async def release(self) -> None:
+        if self._slot_id is None:
+            return
+        from app.services.redis import get_redis
+        try:
+            redis = await get_redis()
+            await redis.zrem(self.SEMAPHORE_KEY, self._slot_id)
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            self._slot_id = None
 
 
 BLOCKED_FLAGS: frozenset[str] = frozenset({
@@ -261,13 +307,18 @@ async def _store_cache(result: NmapScanResult) -> None:
 
 
 async def _check_cooldown(ip: str) -> bool:
-    """Return True if the IP is in cooldown (scan should be rejected)."""
+    """Return True if the IP is in cooldown (scan should be rejected).
+
+    Fails closed: if Redis is unavailable, treat as cooldown active to
+    prevent uncontrolled scan bursts when the coordination layer is down.
+    """
     from app.services.redis import get_redis
     try:
         redis = await get_redis()
         return await redis.exists(f"{COOLDOWN_KEY_PREFIX}{ip}") > 0
-    except Exception:  # noqa: BLE001
-        return False
+    except Exception as exc:  # noqa: BLE001
+        log.error("nmap.redis_unavailable_cooldown", error=str(exc))
+        return True  # fail-closed: treat as cooldown active
 
 
 async def _set_cooldown(ip: str) -> None:
@@ -355,21 +406,39 @@ async def run_nmap_scan(
         log.warning("nmap.not_installed", target=ip)
         return NmapScanResult(ip=ip, error="nmap_not_installed")
 
-    # Acquire concurrency semaphore
-    sem = _get_semaphore()
+    # Acquire distributed concurrency semaphore
+    sem = RedisDistributedSemaphore(settings.nmap_max_concurrent)
     sem_start = time.monotonic()
+
+    # Retry acquiring with backoff
+    acquired = False
+    for attempt in range(30):  # max ~30 seconds of waiting
+        try:
+            acquired = await sem.acquire()
+        except Exception:  # noqa: BLE001
+            # Redis unavailable — fail closed
+            log.error("nmap.semaphore_redis_unavailable", target=ip)
+            SCAN_FAILED.labels(scan_type="nmap", reason="redis_unavailable").inc()
+            return NmapScanResult(ip=ip, error="redis_unavailable")
+        if acquired:
+            break
+        await asyncio.sleep(1.0)
+
+    if not acquired:
+        log.warning("nmap.semaphore_full", target=ip)
+        SCAN_FAILED.labels(scan_type="nmap", reason="concurrency_limit").inc()
+        return NmapScanResult(ip=ip, error="concurrency_limit_reached")
+
+    sem_wait = time.monotonic() - sem_start
+    NMAP_CONCURRENCY_WAITING.observe(sem_wait)
+    if sem_wait > 1.0:
+        log.info("nmap.semaphore_waited", target=ip, wait_s=round(sem_wait, 2))
 
     SCAN_STARTED.labels(scan_type="nmap").inc()
     log.info("nmap.scan_started", target=ip, ports=ports)
 
-    async with sem:
-        sem_wait = time.monotonic() - sem_start
-        NMAP_CONCURRENCY_WAITING.observe(sem_wait)
-        if sem_wait > 1.0:
-            log.info("nmap.semaphore_waited", target=ip, wait_s=round(sem_wait, 2))
-
-        start = time.monotonic()
-
+    start = time.monotonic()
+    try:
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -421,6 +490,8 @@ async def run_nmap_scan(
         await _set_cooldown(ip)
 
         return result
+    finally:
+        await sem.release()
 
 
 def enrich_services(

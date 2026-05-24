@@ -1,0 +1,8 @@
+[Unit]
+Description=NeuroScanIQ PostgreSQL backup
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'docker exec nsiq-postgres pg_dump -U neuroscaniq -Fc neuroscaniq | gzip > /var/backups/nsiq/$(date +%%F).pg_dump.gz'
+ExecStartPost=/usr/bin/find /var/backups/nsiq -name "*.pg_dump.gz" -mtime +14 -delete

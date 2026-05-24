@@ -32,6 +32,7 @@ class JobKind(str, enum.Enum):
     http = "http"
     screenshot = "screenshot"
     monitor_diff = "monitor_diff"
+    deep_scan = "deep_scan"
 
 
 class ScanJob(Base, UUIDMixin, TimestampMixin):
